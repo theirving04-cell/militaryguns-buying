@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Military Op: Strike Protocol</title>
+    <style>
+        body { margin: 0; background: #1a1a1a; color: white; font-family: 'Courier New', Courier, monospace; overflow: hidden; display: flex; }
+        #game-container { position: relative; }
+        canvas { background: #2b302a; cursor: crosshair; display: block; border-right: 4px solid #444; }
+        
+        /* UI Styling */
+        #ui-layer { position: absolute; top: 10px; left: 10px; pointer-events: none; }
+        .stat { font-size: 20px; margin-bottom: 5px; text-shadow: 2px 2px black; }
+
+        /* Sidebar Shop */
+        #sidebar { width: 300px; padding: 20px; background: #222; border-left: 2px solid #555; }
+        .shop-item { background: #333; padding: 15px; margin-bottom: 10px; border: 1px solid #666; border-radius: 5px; }
+        .shop-item h3 { margin: 0 0 10px 0; color: #2ecc71; }
+        button { width: 100%; padding: 10px; background: #27ae60; color: white; border: none; cursor: pointer; font-weight: bold; }
+        button:disabled { background: #7f8c8d; cursor: not-allowed; }
+        button:hover:not(:disabled) { background: #2ecc71; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="ui-layer">
+            <div class="stat">Cash: $<span id="moneyDisplay">0</span></div>
+            <div class="stat">Health: <span id="hpDisplay">100</span>%</div>
+            <div class="stat">Weapon: <span id="weaponDisplay">Pistol</span></div>
+            <div class="stat">Kills: <span id="killDisplay">0</span></div>
+        </div>
+    </div>
+
+    <div id="sidebar">
+        <h2>ARMORY</h2>
+        <div class="shop-item">
+            <h3>Assault Rifle</h3>
+            <p>Fast fire rate, medium damage.</p>
+            <button id="buyRifle" onclick="buyWeapon('Rifle', 500)">Buy for $500</button>
+        </div>
+        <div class="shop-item">
+            <h3>Sniper</h3>
+            <p>High damage, slow fire rate.</p>
+            <button id="buySniper" onclick="buyWeapon('Sniper', 1200)">Buy for $1200</button>
+        </div>
+        <div class="shop-item">
+            <h3>Medkit</h3>
+            <p>Restore 50 HP.</p>
+            <button id="buyMedkit" onclick="buyMedkit(100)">Buy for $100</button>
+        </div>
+        <hr>
+        <p><small>WASD to Move<br>Mouse to Aim & Shoot</small></p>
+    </div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth - 300;
+    canvas.height = window.innerHeight;
+
+    // --- Game State ---
+    let player = { x: 400, y: 300, size: 20, hp: 100, money: 0, kills: 0, angle: 0, weapon: 'Pistol' };
+    let bullets = [];
+    let enemies = [];
+    let keys = {};
+    let lastShot = 0;
+
+    const weapons = {
+        'Pistol': { fireRate: 400, damage: 25, color: '#f1c40f' },
+        'Rifle':  { fireRate: 100, damage: 20, color: '#e67e22' },
+        'Sniper': { fireRate: 1000, damage: 100, color: '#e74c3c' }
+    };
+
+    // --- Input Handling ---
+    window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+    window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+    window.addEventListener('mousemove', e => {
+        const rect = canvas.getBoundingClientRect();
+        player.angle = Math.atan2(e.clientY - player.y, e.clientX - player.x);
+    });
+    window.addEventListener('mousedown', shoot);
+
+    // --- Shop Functions ---
+    function updateUI() {
+        document.getElementById('moneyDisplay').innerText = player.money;
+        document.getElementById('hpDisplay').innerText = player.hp;
+        document.getElementById('weaponDisplay').innerText = player.weapon;
+        document.getElementById('killDisplay').innerText = player.kills;
+        
+        document.getElementById('buyRifle').disabled = player.money < 500;
+        document.getElementById('buySniper').disabled = player.money < 1200;
+        document.getElementById('buyMedkit').disabled = player.money < 100;
+    }
+
+    function buyWeapon(type, cost) {
+        if (player.money >= cost) {
+            player.money -= cost;
+            player.weapon = type;
+            updateUI();
+        }
+    }
+
+    function buyMedkit(cost) {
+        if (player.money >= cost && player.hp < 100) {
+            player.money -= cost;
+            player.hp = Math.min(100, player.hp + 50);
+            updateUI();
+        }
+    }
+
+    // --- Game Logic ---
+    function shoot() {
+        const now = Date.now();
+        const config = weapons[player.weapon];
+        if (now - lastShot < config.fireRate) return;
+
+        bullets.push({
+            x: player.x + Math.cos(player.angle) * 20,
+            y: player.y + Math.sin(player.angle) * 20,
+            vx: Math.cos(player.angle) * 10,
+            vy: Math.sin(player.angle) * 10,
+            damage: config.damage
+        });
+        lastShot = now;
+    }
+
+    function spawnEnemy() {
+        if (enemies.length < 10) {
+            const edge = Math.floor(Math.random() * 4);
+            let x, y;
+            if (edge === 0) { x = Math.random() * canvas.width; y = -20; }
+            else if (edge === 1) { x = canvas.width + 20; y = Math.random() * canvas.height; }
+            else if (edge === 2) { x = Math.random() * canvas.width; y = canvas.height + 20; }
+            else { x = -20; y = Math.random() * canvas.height; }
+            enemies.push({ x, y, hp: 50, speed: 1.5 + (player.kills / 20) });
+        }
+    }
+
+    function update() {
+        if (player.hp <= 0) {
+            alert("Killed in action! Score: " + player.kills);
+            location.reload();
+            return;
+        }
+
+        // Move Player
+        if (keys['w']) player.y -= 3;
+        if (keys['s']) player.y += 3;
+        if (keys['a']) player.x -= 3;
+        if (keys['d']) player.x += 3;
+
+        // Update Bullets
+        bullets.forEach((b, bi) => {
+            b.x += b.vx;
+            b.y += b.vy;
+            if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) bullets.splice(bi, 1);
+        });
+
+        // Update Enemies
+        enemies.forEach((e, ei) => {
+            const dx = player.x - e.x;
+            const dy = player.y - e.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            e.x += (dx / dist) * e.speed;
+            e.y += (dy / dist) * e.speed;
+
+            // Damage Player
+            if (dist < player.size + 10) {
+                player.hp -= 0.5;
+                updateUI();
+            }
+
+            // Hit by Bullet
+            bullets.forEach((b, bi) => {
+                const bdx = b.x - e.x;
+                const bdy = b.y - e.y;
+                const bDist = Math.sqrt(bdx * bdx + bdy * bdy);
+                if (bDist < 20) {
+                    e.hp -= b.damage;
+                    bullets.splice(bi, 1);
+                    if (e.hp <= 0) {
+                        enemies.splice(ei, 1);
+                        player.money += 25;
+                        player.kills++;
+                        updateUI();
+                    }
+                }
+            });
+        });
+
+        if (Math.random() < 0.02) spawnEnemy();
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw Player (Green Tank/Soldier)
+        ctx.save();
+        ctx.translate(player.x, player.y);
+        ctx.rotate(player.angle);
+        ctx.fillStyle = '#27ae60';
+        ctx.fillRect(-15, -15, 30, 30);
+        ctx.fillStyle = '#333';
+        ctx.fillRect(5, -5, 20, 10); // Gun barrel
+        ctx.restore();
+
+        // Draw Bullets
+        bullets.forEach(b => {
+            ctx.fillStyle = weapons[player.weapon].color;
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        // Draw Enemies (Red Circles)
+        enemies.forEach(e => {
+            ctx.fillStyle = '#c0392b';
+            ctx.beginPath();
+            ctx.arc(e.x, e.y, 15, 0, Math.PI * 2);
+            ctx.fill();
+            // Health bar
+            ctx.fillStyle = 'red';
+            ctx.fillRect(e.x - 15, e.y - 25, 30, 4);
+            ctx.fillStyle = 'green';
+            ctx.fillRect(e.x - 15, e.y - 25, (e.hp / 50) * 30, 4);
+        });
+
+        requestAnimationFrame(() => {
+            update();
+            draw();
+        });
+    }
+
+    updateUI();
+    draw();
+</script>
+</body>
+</html>
